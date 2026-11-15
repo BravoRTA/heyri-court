@@ -819,6 +819,7 @@ function openDlg(html){dlg.innerHTML=html;const h=dlg.querySelector('h2');if(h){
 function closeDlg(){if(dlg.open)dlg.close()}
 dlg.addEventListener('click',e=>{if(e.target===dlg)closeDlg()});
 dlg.addEventListener('close',()=>{if(S.mode==='app')render()});
+function dlgMsg(t){const el=$('#alertMsg');if(el)el.textContent=t;else toast(t)}
 function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove('show'),3200)}
 async function guard(btn,fn){
   if(btn&&btn.disabled)return;if(btn)btn.disabled=true;
@@ -1016,8 +1017,8 @@ document.addEventListener('click',async e=>{
     /* 설정·회원 관리 */
     case 'settings':openSettings();break;
     case 'save-settings':guard(el,saveSettings);break;
-    case 'notif-perm':{try{const r=await Notification.requestPermission();toast(r==='granted'?'알림을 허용했어요':'알림이 허용되지 않았어요')}catch(e){toast('이 브라우저는 알림을 지원하지 않아요')}break}
-    case 'test-alert':toast('⏰ 테스트 알림: 오늘 예약해야 해요! (07:00 오픈)');try{if('Notification' in window&&Notification.permission==='granted')new Notification('헤이리 테니스 코트',{body:'테스트 알림이에요'})}catch(e){}break;
+    case 'notif-perm':{let m;try{const r=await Notification.requestPermission();m=r==='granted'?'✅ 알림을 허용했어요':'⚠️ 알림이 허용되지 않았어요. 브라우저(또는 폰) 설정에서 이 사이트의 알림을 허용해 주세요'}catch(e){m='⚠️ 이 브라우저는 알림을 지원하지 않아요 (아이폰은 홈 화면에 추가한 뒤 사용해 주세요)'}dlgMsg(m);break}
+    case 'test-alert':{let m='✅ 앱 안 알림 테스트: ⏰ 오늘 07:00 예약 차례예요!';try{if('Notification' in window&&Notification.permission==='granted'){new Notification('헤이리 테니스 코트',{body:'테스트 알림이에요'});m+=' (시스템 알림도 보냈어요)'}else m+=' — 시스템 알림은 아직 허용되지 않았어요(위 "브라우저 알림 허용"을 먼저 누르세요)'}catch(e){m+=' — 이 기기에서는 시스템 알림을 쓸 수 없어요'}dlgMsg(m);break}
     case 'logout':guard(el,async()=>{try{await API.rpc('logout')}catch(e){}closeDlg();API.clear();S.mode='boot';boot()});break;
     case 'members':openMembers();break;
     case 'approve':guard(el,async()=>{const r=await API.rpc('admin_approve_join',{p_request_id:D.id});toast(r==='ok'?'승인했어요':r==='name_exists'?'이미 있는 이름이에요':'처리할 수 없어요');await refresh(true);openMembers()});break;
@@ -1064,6 +1065,7 @@ function openSettings(){
   <h2 class="sec">내 계정</h2>
   <div class="btns"><button class="btn sm" data-act="notif-perm">브라우저 알림 허용</button><button class="btn sm" data-act="test-alert">알림 테스트</button>
   ${S.admin?'<button class="btn sm" data-act="members">👥 회원·가입 관리</button>':''}<button class="btn sm danger" data-act="logout">로그아웃</button></div>
+  <p id="alertMsg" role="status" aria-live="polite" style="font-weight:700;margin:8px 0"></p>
   <p class="muted small">알림은 앱(브라우저)이 열려 있을 때 떠요. 홈 화면에 추가하면 앱처럼 쓸 수 있어요.</p>`);
 }
 async function saveSettings(){
