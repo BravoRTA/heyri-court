@@ -30,6 +30,37 @@
     --shadow:none;
   }
 }
+
+/* 홈: 내 다음 예약 중심 */
+.hero{background:var(--brand);color:var(--brand-ink);border-radius:20px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.hero-top{display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:600}
+.hero .dday{background:#d9f04a;color:#1f3d2b;font-weight:800;border-radius:999px;padding:4px 14px;font-size:16px}
+.hero-date{font-size:26px;font-weight:800;margin-top:10px}
+.hero-time{font-size:36px;font-weight:800;line-height:1.15}
+.hero-court{font-size:22px;font-weight:700;margin-top:2px}
+.hero-sub{font-size:14px;margin-top:8px;opacity:.92}
+.hero .btn{background:transparent;color:var(--brand-ink);border-color:var(--brand-ink)}
+.hero.empty{background:var(--surface);color:var(--ink);border:1px dashed var(--muted);box-shadow:none}
+.hero.empty .btn{color:var(--ink);border-color:var(--muted)}
+.hero-empty-t{font-size:20px;font-weight:700;margin:4px 0}
+.alertcard{background:#fff3c4;color:#3a2e00;border:2px solid #d9a300;border-radius:16px;padding:14px;margin-bottom:14px}
+.alertcard b{font-size:18px}
+.alertcard .btn.primary{background:#2e7d4f;color:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .alertcard{background:#4a3b00;color:#ffe9a3;border-color:#e8b755}}
+.tl .item{align-items:center}
+.tl .ic{font-size:22px;width:30px;text-align:center}
+details.more{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px}
+details.more>summary{cursor:pointer;padding:12px 14px;font-weight:600;min-height:44px;list-style:none}
+details.more>summary::after{content:"▾";float:right;color:var(--muted)}
+details.more[open]>summary::after{content:"▴"}
+details.more>.inner{padding:0 14px 12px}
+.sumrow{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px}
+dialog#alarmDlg{border:3px solid #d9a300;border-radius:20px;padding:22px;max-width:min(92vw,380px);text-align:center;background:var(--surface);color:var(--ink)}
+dialog#alarmDlg::backdrop{background:rgba(0,0,0,.6)}
+.alarm-h{font-size:26px;margin:0 0 8px}.alarm-t{font-size:18px;font-weight:700;margin:0 0 14px;line-height:1.5}
+@keyframes ring{0%,100%{transform:rotate(0)}20%{transform:rotate(14deg)}40%{transform:rotate(-14deg)}60%{transform:rotate(10deg)}80%{transform:rotate(-10deg)}}
+.alarm-bell{display:inline-block;font-size:56px;animation:ring .9s infinite}
+@media (prefers-reduced-motion:reduce){.alarm-bell{animation:none}}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:16px/1.55 "Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;-webkit-text-size-adjust:100%;padding-bottom:calc(72px + env(safe-area-inset-bottom))}
@@ -176,6 +207,7 @@ body.auth nav#tabs,body.auth .ibtn{display:none}
   <button data-tab="notice"><span class="ic">📣</span>공지</button>
 </div></nav>
 <dialog id="dlg"></dialog>
+<dialog id="alarmDlg" aria-labelledby="alarmH"></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="config.js"></script>
 <script>
@@ -278,6 +310,11 @@ async function loadAll(){
   S.rules=(rules||[]).map(r=>({id:r.id,weekday:r.weekday,member:nameOf(r.member_id),memberId:r.member_id,court:r.court||null,start:r.start_hour,hours:r.hours}));
   S.swaps=swaps.map(s=>({id:s.id,from:nameOf(s.from_member),fromId:s.from_member,to:nameOf(s.to_member),toId:s.to_member,aId:s.a_id,bId:s.b_id,text:s.text,status:s.status}));
   S.notes=notes.map(n=>({id:n.id,toAdmin:n.to_admin,text:n.text,read:n.read,at:Date.parse(n.created_at)}));
+  try{const seen=lsGet('hairi_seen_notes',null),ids=S.notes.map(n=>n.id);
+    if(seen===null)lsSet('hairi_seen_notes',ids);
+    else{const fresh=S.notes.filter(n=>!n.read&&!seen.includes(n.id));
+      if(fresh.length){Snd.chime();toast(fresh[0].text)}
+      lsSet('hairi_seen_notes',[...new Set([...seen,...ids])].slice(-300))}}catch(e){}
   S.settings={...DEFAULT_SETTINGS,...((sett[0]&&sett[0].data)||{})};
   S.joinReqs=S.admin?(await API.rpc('admin_list_join_requests').catch(()=>[])):[];
   S.sig=JSON.stringify([S.reservations,S.blocks,S.assignments,S.rules,S.swaps,S.notes,S.settings,S.memberObjs,S.joinReqs,S.admin]);
@@ -615,34 +652,50 @@ function viewAssign(){
 /* --- 홈 --- */
 function viewHome(){
   const t=today(),tm=addDays(t,1),mk=t.slice(0,7),opening=addDays(t,lead());
-  const myRes=S.reservations.filter(r=>r.memberId===S.meId&&r.date>=t&&r.status==='booked').sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start).slice(0,4);
-  const myAs=S.assignments.filter(a=>a.memberId===S.meId&&a.date>=t).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start).slice(0,4);
+  const nowD=new Date(),nowH=nowD.getHours()+nowD.getMinutes()/60,nowMin=nowD.getHours()*60+nowD.getMinutes();
+  const dd=d=>Math.round((parse(d)-parse(t))/864e5),ddl=d=>{const n=dd(d);return n===0?'오늘':n===1?'내일':'D-'+n};
+  const upRes=S.reservations.filter(r=>r.memberId===S.meId&&r.status==='booked'&&(r.date>t||(r.date===t&&r.start+r.hours>nowH))).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start);
+  const next=upRes[0];
+  const myAs=S.assignments.filter(a=>a.memberId===S.meId&&a.date>=t).sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start);
   const todayMine=S.assignments.filter(a=>a.memberId===S.meId&&a.date===opening);
-  const mineMonth=S.reservations.filter(r=>r.memberId===S.meId&&r.date.startsWith(mk)).reduce((x,r)=>x+resPrice(r),0);
-  const clubMonth=S.reservations.filter(r=>r.date.startsWith(mk)).reduce((x,r)=>x+resPrice(r),0);
-  const unread=S.notes.filter(n=>!n.read).slice(0,3);
+  const mineMonth=S.reservations.filter(r=>r.memberId===S.meId&&r.date.startsWith(mk)&&r.status==='booked').reduce((x,r)=>x+resPrice(r),0);
+  const unread=S.notes.filter(n=>!n.read);
   const day=(d,label)=>{const rs=S.reservations.filter(r=>r.date===d&&r.status==='booked').sort((a,b)=>a.start-b.start||a.court-b.court);
-    return `<div class="card"><p style="margin:0 0 6px"><b>${label} ${fmtDate(d)}</b> <span class="muted small">예약 ${rs.length}건</span></p>${rs.length?`<div class="list">${rs.map(r=>`<div class="item"><div class="grow">${hh(r.start,r.hours)}시 · 코트${r.court} · <b>${esc(r.member)}</b></div></div>`).join('')}</div>`:'<div class="empty-note">아직 예약이 없어요</div>'}
-      <div class="btns"><button class="btn sm" data-act="open-day" data-date="${d}">자세히 보기</button></div></div>`};
+    return `<p style="margin:8px 0 6px"><b>${label} ${fmtDate(d)}</b> <span class="muted small">예약 ${rs.length}건</span></p>${rs.length?`<div class="list">${rs.map(r=>`<div class="item"><div class="grow">${hh(r.start,r.hours)}시 · 코트${r.court} · <b>${esc(r.member)}</b></div></div>`).join('')}</div>`:'<div class="empty-note">아직 예약이 없어요</div>'}
+      <div class="btns"><button class="btn sm" data-act="open-day" data-date="${d}">자세히 보기</button></div>`};
   const ann=(S.settings.announcement||'').trim();
-  return `${ann?`<div class="banner">📢 ${esc(ann).replace(/\n/g,'<br>')}</div>`:''}
-  ${todayMine.length?`<div class="banner">⏰ 오늘 <b>07:00</b>에 예약할 차례예요! ${todayMine.map(a=>`${fmtDate(a.date)} ${aLabel(a)}`).join(', ')}
-    <div class="btns"><button class="btn primary sm" data-act="done-assign" data-id="${todayMine[0].id}">예약 결과 입력</button></div></div>`:''}
-  <div class="kpis"><div class="kpi"><span class="muted small">이번 달 내 예상 정산액</span><b>${won(mineMonth)}</b></div>
-    <div class="kpi"><span class="muted small">이번 달 클럽 전체</span><b>${won(clubMonth)}</b></div>
-    <div class="kpi"><span class="muted small">읽지 않은 알림</span><b>${S.notes.filter(n=>!n.read).length}건</b></div></div>
-  <h2 class="sec">내 예약 현황</h2>
-  <div class="list">${myRes.length?myRes.map(r=>`<div class="item"><div class="grow"><span class="t">${fmtDate(r.date)} ${hh(r.start,r.hours)}시 · 코트${r.court}</span> <span class="muted small">${won(resPrice(r))}</span></div></div>`).join(''):'<div class="empty-note">앞으로 내 예약이 없어요</div>'}</div>
-  <h2 class="sec">내 예약 담당(배정)</h2>
-  <div class="list">${myAs.length?myAs.map(a=>`<div class="item"><div class="grow"><span class="t">${fmtDate(a.date)} ${aLabel(a)}</span><br><span class="muted small">${fmtDate(bookingOpen(a.date))} 07:00에 예약</span></div></div>`).join(''):'<div class="empty-note">앞으로 배정된 날이 없어요</div>'}</div>
-  <h2 class="sec">전체 예약 현황</h2>${day(t,'오늘')}${day(tm,'내일')}
-  ${unread.length?`<h2 class="sec">새 알림</h2><div class="list">${unread.map(n=>`<div class="item"><div class="grow">${esc(n.text)}</div></div>`).join('')}</div><div class="btns"><button class="btn sm" data-act="bell">알림 모두 보기</button></div>`:''}
-  <h2 class="sec">테니스 소식</h2>
-  <div class="card"><div class="btns" style="margin-top:0">
+  // 1) 오늘이 내 예약 담당일이면 가장 위에
+  const dutyNow=todayMine.length?(()=>{const left=7*60-nowMin;
+    const when=left>0?`07:00까지 <b>${left}분</b> 남았어요`:'예약이 열렸어요. 지금 예약하세요!';
+    return `<div class="alertcard" role="alert">⏰ <b>오늘 07:00 예약 차례예요!</b><br>${when}<br>
+      ${todayMine.map(a=>`<span class="t">${fmtDate(a.date)} ${aLabel(a)}</span>${esc(partnerTxt(a))}`).join('<br>')}
+      <div class="btns"><button class="btn primary" data-act="done-assign" data-id="${todayMine[0].id}">예약 결과 입력</button></div></div>`})():'';
+  // 2) 내 다음 예약
+  const hero=next?(()=>{const live=next.date===t&&next.start<=nowH;
+    return `<section class="hero" aria-label="내 다음 예약"><div class="hero-top"><span>내 다음 예약</span><span class="dday">${live?'지금 이용 중':ddl(next.date)}</span></div>
+      <div class="hero-date">${fmtDate(next.date)}</div><div class="hero-time">${pad(next.start)}:00~${pad(next.start+next.hours)}:00</div><div class="hero-court">코트 ${next.court}</div>
+      <div class="hero-sub">예약 완료 · ${won(resPrice(next))}</div>
+      <div class="btns"><button class="btn" data-act="goto" data-tab="mine">내 예약 전체 보기</button></div></section>`})()
+    :`<section class="hero empty" aria-label="내 다음 예약"><div class="hero-top"><span>내 다음 예약</span></div>
+      <div class="hero-empty-t">예정된 예약이 없어요</div>
+      <div class="muted">${myAs.length?`다음 예약 담당은 아래에서 확인하세요`:'배정이 생기면 여기에 가장 먼저 보여요'}</div>
+      <div class="btns"><button class="btn" data-act="goto" data-tab="cal">캘린더 보기</button></div></section>`;
+  // 3) 앞으로 내 일정 (예약 + 예약 담당)
+  const items=[...upRes.slice(1,4).map(r=>({k:r.date+pad(r.start),ic:'🎾',t:`${fmtDate(r.date)} ${hh(r.start,r.hours)}시 · 코트${r.court}`,s:`예약 완료 · ${ddl(r.date)}`})),
+    ...myAs.filter(a=>bookingOpen(a.date)>t).map(a=>{const o=bookingOpen(a.date);return {k:o+'07',ic:'📝',t:`${fmtDate(o)} 07:00에 예약하기`,s:`${fmtDate(a.date)} ${aLabel(a)} 이용${partnerTxt(a)}`}})]
+    .sort((a,b)=>a.k.localeCompare(b.k)).slice(0,5);
+  const tl=items.length?`<h2 class="sec">앞으로 내 일정</h2><div class="list tl">${items.map(i=>`<div class="item"><span class="ic" aria-hidden="true">${i.ic}</span><div class="grow"><span class="t">${esc(i.t)}</span><br><span class="muted small">${esc(i.s)}</span></div></div>`).join('')}</div>`:'';
+  const nt=unread.length?`<div class="banner" role="status">🔔 새 알림 ${unread.length}건<br>${unread.slice(0,2).map(n=>`<span class="small">${esc(n.text)}</span>`).join('<br>')}
+    <div class="btns"><button class="btn sm" data-act="bell">알림 보기</button></div></div>`:'';
+  return `${dutyNow}${hero}${nt}${tl}
+  ${ann?`<div class="banner">📢 ${esc(ann).replace(/\n/g,'<br>')}</div>`:''}
+  <div class="sumrow"><span>이번 달 내 예상 정산액 <b>${won(mineMonth)}</b></span><button class="btn sm" data-act="goto" data-tab="settle">정산 보기</button></div>
+  <details class="more"><summary>오늘 · 내일 전체 예약 현황</summary><div class="inner">${day(t,'오늘')}${day(tm,'내일')}</div></details>
+  <details class="more"><summary>테니스 소식</summary><div class="inner"><div class="btns" style="margin-top:0">
     <a class="btn" target="_blank" rel="noopener" href="https://search.naver.com/search.naver?where=news&query=%ED%85%8C%EB%8B%88%EC%8A%A4">📰 테니스 뉴스 검색</a>
     <a class="btn" target="_blank" rel="noopener" href="https://www.pjtennis.or.kr">🏟️ 파주 테니스 협회</a>
     <a class="btn" target="_blank" rel="noopener" href="https://www.kortennis.or.kr">🎾 대한테니스협회</a></div>
-  <p class="muted small">뉴스는 보안상 앱 안에 직접 불러오지 않고 각 사이트로 연결해요.</p></div>`;
+  <p class="muted small">뉴스는 보안상 앱 안에 직접 불러오지 않고 각 사이트로 연결해요.</p></div></details>`;
 }
 
 /* --- 내 예약 --- */
@@ -836,6 +889,20 @@ async function pushDisable(){if(!('serviceWorker' in navigator))return;const reg
 let pushSynced=false;
 async function pushSync(){if(pushSynced)return;pushSynced=true;try{if(!('PushManager' in window)||Notification.permission!=='granted')return;const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub)await pushSave(sub)}catch(e){}}
 function dlgMsg(t){const el=$('#alertMsg');if(el)el.textContent=t;else toast(t)}
+/* ============ 알람 소리 ============ */
+const Snd={ctx:null,timer:null,
+  on(){return lsGet('hairi_alarm',true)!==false},
+  unlock(){try{if(!this.ctx){const C=window.AudioContext||window.webkitAudioContext;if(!C)return;this.ctx=new C()}if(this.ctx.state==='suspended')this.ctx.resume()}catch(e){}},
+  beep(f,t0,dur,vol){try{const c=this.ctx,o=c.createOscillator(),g=c.createGain(),t=c.currentTime+t0;o.type='square';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+dur+0.03)}catch(e){}},
+  pattern(){[0,.25,.5,1.1,1.35,1.6].forEach(t=>this.beep(1046,t,.15,.35))},
+  chime(){this.unlock();if(!this.ctx||!this.on())return;this.beep(784,0,.18,.25);this.beep(1175,.2,.3,.25)},
+  ring(){this.unlock();if(!this.on())return false;this.stop();let n=0;const go=()=>{this.pattern();try{navigator.vibrate&&navigator.vibrate([300,100,300,100,300])}catch(e){}if(++n>=12)this.stop()};go();this.timer=setInterval(go,2400);return true},
+  stop(){clearInterval(this.timer);this.timer=null;try{navigator.vibrate&&navigator.vibrate(0)}catch(e){}}};
+['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,()=>Snd.unlock(),{passive:true}));
+function showAlarm(title,text){const d=$('#alarmDlg');if(!d)return;
+  d.innerHTML=`<div class="alarm-bell" aria-hidden="true">⏰</div><h2 class="alarm-h" id="alarmH">${esc(title)}</h2><p class="alarm-t">${esc(text)}</p><div class="btns"><button class="btn primary grow" data-act="alarm-ok">확인 (알람 끄기)</button></div>`;
+  try{if(!d.open)d.showModal()}catch(e){}Snd.ring()}
+$('#alarmDlg').addEventListener('close',()=>Snd.stop());
 function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove('show'),3200)}
 async function guard(btn,fn){
   if(btn&&btn.disabled)return;if(btn)btn.disabled=true;
@@ -895,8 +962,8 @@ function checkAlerts(){
     if(now>=t&&now<t+60*60000){
       fired[a.id]=1;changed=true;
       const text=`⏰ 오늘 07:00 예약 차례예요! ${fmtDate(a.date)} ${hh(a.start,a.hours)}시${a.court?' 코트'+a.court:' 코트'} 예약${partnerTxt(a)}`;
-      toast(text);
-      try{if('Notification' in window&&Notification.permission==='granted')new Notification('헤이리 테니스 코트',{body:text})}catch(e){}
+      toast(text);showAlarm('오늘 07:00 예약 차례예요!',`${fmtDate(a.date)} ${hh(a.start,a.hours)}시${a.court?' 코트'+a.court:''} 예약${partnerTxt(a)}`);
+      try{if('Notification' in window&&Notification.permission==='granted')new Notification('헤이리 테니스 코트',{body:text,vibrate:[400,150,400,150,800],requireInteraction:true})}catch(e){}
     }else if(now>=t+60*60000){fired[a.id]=1;changed=true}
   }
   if(changed)lsSet(FKEY,fired);
@@ -1033,6 +1100,10 @@ document.addEventListener('click',async e=>{
     /* 설정·회원 관리 */
     case 'settings':openSettings();break;
     case 'save-settings':guard(el,saveSettings);break;
+    case 'goto':view.tab=D.tab;if(view.tab==='cal')view.day=null;render();scrollTo(0,0);refresh();break;
+    case 'alarm-ok':Snd.stop();{const d=$('#alarmDlg');if(d&&d.open)d.close()}break;
+    case 'alarm-toggle':{const on=!Snd.on();lsSet('hairi_alarm',on);el.textContent=on?'🔔 알람 소리 켜짐':'🔕 알람 소리 꺼짐';if(on)Snd.chime();dlgMsg(on?'🔔 알람 소리를 켰어요':'🔕 알람 소리를 껐어요 (진동·알림 표시는 그대로예요)');break}
+    case 'alarm-test':{Snd.unlock();if(!Snd.on()){dlgMsg('🔕 알람 소리가 꺼져 있어요. 위의 알람 소리 버튼으로 켜 주세요');break}Snd.ring();setTimeout(()=>Snd.stop(),3600);dlgMsg('🔊 알람 소리를 울렸어요. 소리가 안 나면 폰의 무음 모드와 볼륨을 확인해 주세요');break}
     case 'push-on':guard(el,async()=>{dlgMsg(await pushEnable())});break;
     case 'push-test':guard(el,async()=>{try{await API.rpc('push_test');dlgMsg('📨 테스트 푸시를 보냈어요. 몇 초 안에 알림이 오는지 확인하세요 (안 오면 "푸시 알림 켜기"를 먼저 눌러 주세요)')}catch(e){dlgMsg('⚠️ '+errMsg(e))}});break;
     case 'notif-perm':{let m;try{const r=await Notification.requestPermission();m=r==='granted'?'✅ 알림을 허용했어요':'⚠️ 알림이 허용되지 않았어요. 브라우저(또는 폰) 설정에서 이 사이트의 알림을 허용해 주세요'}catch(e){m='⚠️ 이 브라우저는 알림을 지원하지 않아요 (아이폰은 홈 화면에 추가한 뒤 사용해 주세요)'}dlgMsg(m);break}
@@ -1081,10 +1152,11 @@ function openSettings(){
   <p class="muted small">요금은 협회 안내 기준이에요(새벽·주간·야간은 일출·일몰에 따라 바뀔 수 있어요).</p>
   <div class="btns">${S.admin?'<button class="btn primary grow" data-act="save-settings">저장</button>':''}<button class="btn ${S.admin?'':'grow'}" data-act="close">닫기</button></div>
   <h2 class="sec">내 계정</h2>
-  <div class="btns"><button class="btn sm primary" data-act="push-on">📲 푸시 알림 켜기</button><button class="btn sm" data-act="push-test">푸시 테스트</button><button class="btn sm" data-act="test-alert">앱 안 알림 테스트</button>
+  <div class="btns"><button class="btn sm primary" data-act="push-on">📲 푸시 알림 켜기</button><button class="btn sm" data-act="push-test">푸시 테스트</button><button class="btn sm" data-act="alarm-toggle">${Snd.on()?'🔔 알람 소리 켜짐':'🔕 알람 소리 꺼짐'}</button><button class="btn sm" data-act="alarm-test">🔊 알람 소리 테스트</button><button class="btn sm" data-act="test-alert">앱 안 알림 테스트</button>
   ${S.admin?'<button class="btn sm" data-act="members">👥 회원·가입 관리</button>':''}<button class="btn sm danger" data-act="logout">로그아웃</button></div>
   <p id="alertMsg" role="status" aria-live="polite" style="font-weight:700;margin:8px 0"></p>
-  <p class="muted small">"푸시 알림 켜기"를 누르면 앱을 닫아 둬도 예약 10분 전(06:50)과 새 알림이 폰으로 와요. 아이폰은 먼저 사파리 공유 버튼 → "홈 화면에 추가"로 설치한 뒤 설치된 앱에서 켜 주세요.</p>`);
+  <p class="muted small">"푸시 알림 켜기"를 누르면 앱을 닫아 둬도 예약 10분 전(06:50)과 새 알림이 폰으로 와요. 아이폰은 먼저 사파리 공유 버튼 → "홈 화면에 추가"로 설치한 뒤 설치된 앱에서 켜 주세요.</p>
+  <p class="muted small">앱이 열려 있을 때는 07:00 10분 전에 알람처럼 소리와 진동이 울려요(화면을 한 번 터치해 두면 소리가 나요). 앱을 닫아 둔 상태의 푸시 알림 소리는 폰의 알림음 설정을 따라요.</p>`);
 }
 async function saveSettings(){
   const n=id=>+$(id).value,s=JSON.parse(JSON.stringify(S.settings));
