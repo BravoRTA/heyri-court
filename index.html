@@ -16,6 +16,7 @@
   --joint:#fbefc9; --joint-ink:#7a5a00;
   --monthly:#ece3f6; --monthly-ink:#5b3a85;
   --blocked:#f9dcdc; --blocked-ink:#8a2b2b;
+  --club:#fde6cf; --club-ink:#8a4a0d;
   --warn:#8a5a00; --err:#b3261e; --radius:12px;
   --shadow:0 1px 2px rgba(20,40,30,.08),0 4px 14px rgba(20,40,30,.06);
 }
@@ -25,7 +26,7 @@
     --brand:#58b97d; --brand-ink:#0d2015; --brand-soft:#21382a;
     --res:#1f3a2a; --res-ink:#9fe0b6; --rain:#262f40; --rain-ink:#a9b8d6;
     --joint:#3d3414; --joint-ink:#f0d27a; --monthly:#32284a; --monthly-ink:#d1b8f2;
-    --blocked:#44201f; --blocked-ink:#f2a5a5; --warn:#e8b755; --err:#ff8a80;
+    --blocked:#44201f; --blocked-ink:#f2a5a5; --club:#4a2e16; --club-ink:#f5c690; --warn:#e8b755; --err:#ff8a80;
     --shadow:none;
   }
 }
@@ -78,7 +79,7 @@ textarea{width:100%}
 .chip{font-size:12px;line-height:1.35;border-radius:6px;padding:0 5px;display:inline-block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .c-res{background:var(--res);color:var(--res-ink)}.c-rain{background:var(--rain);color:var(--rain-ink)}
 .c-joint{background:var(--joint);color:var(--joint-ink)}.c-monthly{background:var(--monthly);color:var(--monthly-ink)}
-.c-blocked{background:var(--blocked);color:var(--blocked-ink)}.c-gray{background:var(--line);color:var(--muted)}
+.c-blocked{background:var(--blocked);color:var(--blocked-ink)}.c-club{background:var(--club);color:var(--club-ink)}.c-gray{background:var(--line);color:var(--muted)}
 .legend{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0}
 /* day grid */
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -91,6 +92,7 @@ table.grid td.res{background:var(--res);color:var(--res-ink);border:1px solid tr
 table.grid td.rainc{background:var(--rain);color:var(--rain-ink);border:1px solid transparent;text-decoration:line-through}
 table.grid td.joint{background:var(--joint);color:var(--joint-ink);border:1px solid transparent}
 table.grid td.monthly{background:var(--monthly);color:var(--monthly-ink);border:1px solid transparent}
+table.grid td.club{background:var(--club);color:var(--club-ink);border:1px solid transparent}
 table.grid td.blocked{background:var(--blocked);color:var(--blocked-ink);border:1px solid transparent}
 table.grid td.senior{background:repeating-linear-gradient(45deg,var(--line),var(--line) 6px,transparent 6px,transparent 12px);cursor:default;color:var(--muted);font-size:11px}
 table.grid td.empty:hover{border-color:var(--brand);background:var(--brand-soft)}
@@ -352,7 +354,7 @@ function daySummary(date){
   return {
     n:rs.filter(r=>r.status==='booked').length,
     rain:rs.filter(r=>r.status==='rain_cancel').length+bs.filter(b=>b.type==='rain').length,
-    joint:bs.some(b=>b.type==='joint'),monthly:bs.some(b=>b.type==='monthly'),blocked:bs.some(b=>b.type==='blocked'),
+    joint:bs.some(b=>b.type==='joint'),monthly:bs.some(b=>b.type==='monthly'),blocked:bs.some(b=>b.type==='blocked'),club:bs.some(b=>b.type==='club'),
     asg:S.assignments.filter(a=>a.date===date).length
   };
 }
@@ -380,7 +382,7 @@ function a11yPass(){
 document.addEventListener('keydown',e=>{
   if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('[role=button][data-act]:not(button)')){e.preventDefault();e.target.click()}
 });
-function legend(){return `<div class="legend"><span class="chip c-res">회원 예약</span><span class="chip c-rain">우천 취소</span><span class="chip c-joint">공동 사용</span><span class="chip c-monthly">월례대회</span><span class="chip c-blocked">대회·사용 불가</span></div>`}
+function legend(){return `<div class="legend"><span class="chip c-res">회원 예약</span><span class="chip c-rain">우천 취소</span><span class="chip c-joint">공동 사용</span><span class="chip c-monthly">월례대회</span><span class="chip c-blocked">대회·사용 불가</span><span class="chip c-club">타 클럽 예약</span></div>`}
 
 /* --- 로그인 · 가입 --- */
 function viewLogin(){
@@ -444,6 +446,7 @@ function viewMonth(){
     if(s.joint)chips+=`<span class="chip c-joint">공동</span>`;
     if(s.monthly)chips+=`<span class="chip c-monthly">월대</span>`;
     if(s.blocked)chips+=`<span class="chip c-blocked">대회</span>`;
+    if(s.club)chips+=`<span class="chip c-club">타클럽</span>`;
     if(!s.n&&s.asg)chips+=`<span class="chip c-gray">배정 ${s.asg}</span>`;
     cells+=`<button class="mday ${date===today()?'today':''} ${w===0?'sun':''} ${w===6?'sat':''}" data-act="open-day" data-date="${date}"><span class="n">${d}</span>${chips}</button>`;
   }
@@ -469,7 +472,7 @@ function viewDay(date){
       const x=map[c+':'+h];
       if(S.settings.seniorCourt===c&&!x){body+=`<td class="senior">시니어 고정</td>`;continue}
       if(!x){body+=`<td class="empty" data-act="cell" data-date="${date}" data-court="${c}" data-hour="${h}"></td>`;continue}
-      if(x.t==='b'){const cl={joint:'joint',monthly:'monthly',blocked:'blocked',rain:'rainc'}[x.b.type];body+=`<td class="${cl}">${esc(x.b.label)}</td>`;continue}
+      if(x.t==='b'){const cl={joint:'joint',monthly:'monthly',blocked:'blocked',club:'club',rain:'rainc'}[x.b.type];body+=`<td class="${cl}">${esc(x.b.label)}</td>`;continue}
       const r=x.r;
       if(r.status==='booked')body+=`<td class="res" data-act="edit-res" data-id="${r.id}">${esc(r.member)}</td>`;
       else body+=`<td class="rainc" data-act="edit-res" data-id="${r.id}" title="${STATUS[r.status]}">${esc(r.member)}<br><span class="small">${r.status==='rain_cancel'?'우천':'취소'}</span></td>`;
@@ -477,6 +480,12 @@ function viewDay(date){
     body+=`</tr>`;
   }
   const n=daySummary(date).n;
+  const extGroups=extGroupsOf(date);
+  const extCard=S.admin?`<div class="card"><h2>타 클럽·행사 입력 (예약관리자)</h2>
+    ${extGroups.length?`<div class="list">${extGroups.map(g=>`<div class="item"><div class="grow"><span class="badge ${BT_CLS[g.type]}">${BT_NAME[g.type]}</span> <b>${esc(g.label)}</b><br><span class="muted small">코트${g.courts.join('·')} · ${hh(g.start,g.hours)}시</span></div>
+      <button class="btn sm danger" data-act="ext-del" data-ids="${g.ids.join(',')}">삭제</button></div>`).join('')}</div>`:'<div class="empty-note">입력된 타 클럽·행사 예약이 없어요</div>'}
+    <div class="btns"><button class="btn primary" data-act="ext-open" data-date="${date}">＋ 타 클럽·행사 예약 입력</button></div>
+    <p class="muted small">단톡방에 올라온 "예약 현황" 글을 그대로 붙여 넣어도 돼요.</p></div>`:'';
   return `<div class="toolbar"><button class="btn" data-act="back-month">‹ 월</button>
     <button class="btn" data-act="day" data-d="-1" aria-label="전날">‹</button>
     <h2>${fmtDate(date)} ${off?'<span class="badge c-joint">주말·공휴일 요금</span>':''}</h2>
@@ -485,7 +494,7 @@ function viewDay(date){
       <div class="btns"><button class="btn primary" data-act="add-res" data-date="${date}">＋ 예약 결과 입력</button>
       <button class="btn" data-act="toggle-hours">${view.allHours?'기본 시간만':'전체 시간 보기'}</button>
       <button class="btn" data-act="goto-notice" data-date="${date}">📣 공지 문구</button></div>
-      <p class="muted small">이 날 회원 예약 ${n}건 · 빈 칸을 누르면 그 시간으로 입력창이 열려요. 휴대폰에서는 표를 옆으로 밀면 나머지 코트가 보여요.</p></div>`;
+      <p class="muted small">이 날 회원 예약 ${n}건 · 빈 칸을 누르면 그 시간으로 입력창이 열려요. 휴대폰에서는 표를 옆으로 밀면 나머지 코트가 보여요.</p></div>${extCard}`;
 }
 
 /* --- 배정 --- */
@@ -686,18 +695,114 @@ function viewSettle(){
   <p class="muted small">요금은 설정(⚙️)의 요금표로 자동 계산돼요. 우천 취소와 환불 가능한 본인 취소(이용 3일 전까지)는 0원이에요.</p>`;
 }
 
+/* --- 타 클럽·행사 예약 입력 (예약관리자) --- */
+const BT_NAME={club:'타 클럽',joint:'공동 사용',monthly:'월례대회',blocked:'대회·사용불가',rain:'우천'};
+const BT_CLS={club:'c-club',joint:'c-joint',monthly:'c-monthly',blocked:'c-blocked',rain:'c-rain'};
+function extGroupsOf(date){
+  const g={};
+  S.blocks.filter(b=>b.date===date&&b.type!=='rain').forEach(b=>{const k=[b.type,b.label,b.start,b.hours].join('|');(g[k]=g[k]||{type:b.type,label:b.label,start:b.start,hours:b.hours,courts:[],ids:[]});g[k].courts.push(b.court);g[k].ids.push(b.id)});
+  return Object.values(g).map(x=>({...x,courts:x.courts.sort((a,b)=>a-b)})).sort((a,b)=>a.start-b.start||a.label.localeCompare(b.label));
+}
+/* 카톡 "예약 현황" 글 → {date, event, courts:[{court,ranges:[[시작,끝]]}]} */
+function parseStatus(text){
+  const out={date:null,event:null,courts:[]};
+  const dm=text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if(dm){const t=today(),y=+t.slice(0,4);let yy=y;const m=+dm[1];if(m<+t.slice(5,7)-6)yy=y+1;out.date=`${yy}-${pad(m)}-${pad(+dm[2])}`}
+  for(const raw of text.split(/\r?\n/)){
+    const line=raw.trim();if(!line)continue;
+    const cm=line.match(/^(\d)\s*번\s*[:：]\s*(.+)$/);
+    if(cm){
+      const court=+cm[1],val=cm[2].trim(),ranges=[];
+      if(/전\s*시간/.test(val))ranges.push([6,22]);
+      else for(const m of val.matchAll(/(\d{1,2})\s*[-~–]\s*(\d{1,2})/g)){const a=+m[1],b=+m[2];if(a>=6&&b<=22&&b>a)ranges.push([a,b])}
+      if(ranges.length)out.courts.push({court,ranges});
+      continue;
+    }
+    const em=line.match(/^[•·\-*▪●○]\s*(.+)$/);
+    if(em&&!out.event){const label=em[1].replace(/\(?\s*공동\s*사용\s*\)?/,'').trim();out.event={label:label||em[1].trim(),joint:/공동/.test(em[1])}}
+  }
+  return out;
+}
+/* 이미 회원 예약·등록된 칸은 빼고, 새로 넣을 칸만 코트별 연속 구간으로 */
+function newBlockRows(date,courtRanges,type,label){
+  const map=dayMap(date),rows=[];
+  for(const {court,ranges} of courtRanges){
+    const hs=new Set();ranges.forEach(([a,b])=>{for(let h=a;h<b;h++)hs.add(h)});
+    const free=[...hs].filter(h=>{const x=map[court+':'+h];return !(x&&(x.t==='b'||(x.r&&x.r.status==='booked')))}).sort((a,b)=>a-b);
+    let st=null,prev=null;
+    const flush=()=>{if(st!==null)rows.push({date,court,start_hour:st,hours:prev-st+1,type,label})};
+    for(const h of free){if(st===null){st=h}else if(h!==prev+1){flush();st=h}prev=h}
+    flush();
+  }
+  return rows;
+}
+let extDraft=null;
+function openExt(date){
+  extDraft={date,type:'club',label:'',courts:[],start:7,end:12,parsed:null};
+  const C=S.settings.courts;
+  openDlg(`<h2>타 클럽·행사 예약 입력</h2>
+  <details open><summary><b>단톡방 글 붙여넣기</b> (한 번에 입력)</summary>
+    <p class="muted small">예: [ 11월 15일(일) 예약 현황 ] 아래 "2번 : 07-12시,17-19시" 같은 글을 그대로 붙여 넣으세요. 우리 회원이 이미 예약한 칸은 빼고, 나머지만 타 클럽 예약으로 넣어요.</p>
+    <textarea id="ex_paste" rows="6" placeholder="[ 11월 15일(일) 예약 현황 ]&#10;• 아너스월대(공동사용)&#10;1번 : 전시간&#10;2번 : 07-12시,17-19시"></textarea>
+    <div class="btns"><button class="btn" data-act="ext-parse">내용 확인</button></div><div id="ex_prev"></div></details>
+  <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+  <details><summary><b>직접 입력</b></summary>
+  <div class="form" style="margin-top:8px">
+    <label>날짜</label><input type="date" id="ex_date" value="${date}">
+    <label>구분</label><select id="ex_type"><option value="club">타 클럽 예약</option><option value="joint">공동 사용</option><option value="monthly">월례대회</option><option value="blocked">대회·사용 불가</option></select>
+    <label>이름·행사</label><input type="text" id="ex_label" list="ex_names" placeholder="예: 현대, 호로하, 세컨윈드" maxlength="30"><datalist id="ex_names"><option value="현대"><option value="호로하"><option value="세컨윈드"><option value="타 클럽"></datalist>
+    <label class="full">코트 (여러 개 선택)</label><div class="full chips" id="ex_courts">${Array.from({length:C},(_,i)=>`<label class="chip c-gray" style="font-size:14px;padding:6px 10px"><input type="checkbox" value="${i+1}"> 코트${i+1}</label>`).join('')}</div>
+    <label>시작</label><select id="ex_s">${Array.from({length:16},(_,i)=>i+6).map(h=>`<option value="${h}" ${h===7?'selected':''}>${pad(h)}시</option>`).join('')}</select>
+    <label>끝</label><select id="ex_e">${Array.from({length:16},(_,i)=>i+7).map(h=>`<option value="${h}" ${h===12?'selected':''}>${pad(h)}시</option>`).join('')}</select>
+  </div>
+  <div class="btns"><button class="btn sm" data-act="ext-allday">전시간(06~22시)</button><button class="btn primary" data-act="ext-save">저장</button></div></details>
+  <div class="btns"><button class="btn" data-act="close">닫기</button></div>`);
+}
+function extPreview(){
+  const txt=$('#ex_paste').value,p=parseStatus(txt);extDraft.parsed=p;
+  if(!p.courts.length){$('#ex_prev').innerHTML='<p class="msg err">코트별 시간을 찾지 못했어요. "2번 : 07-12시" 모양이어야 해요.</p>';return}
+  const date=p.date||extDraft.date,type=p.event&&p.event.joint?'joint':'club',label=p.event?p.event.label:'타 클럽';
+  extDraft.pdate=date;extDraft.ptype=type;extDraft.plabel=label;
+  const rows=newBlockRows(date,p.courts,type,label);
+  $('#ex_prev').innerHTML=`<div class="card" style="margin:8px 0"><p style="margin:0 0 6px"><b>${fmtDate(date)}</b> 기준</p>
+    <div class="form"><label>구분</label><select id="ex_ptype"><option value="club" ${type==='club'?'selected':''}>타 클럽 예약</option><option value="joint" ${type==='joint'?'selected':''}>공동 사용</option></select>
+    <label>이름·행사</label><input type="text" id="ex_plabel" value="${esc(label)}" maxlength="30"></div>
+    <div class="list" style="margin-top:8px">${p.courts.map(c=>`<div class="item"><div class="grow">${c.court}번 : ${c.ranges.map(([a,b])=>a===6&&b===22?'전시간':`${pad(a)}-${pad(b)}시`).join(', ')}</div></div>`).join('')}</div>
+    <p class="muted small">새로 넣을 칸: <b>${rows.reduce((n,r)=>n+r.hours,0)}시간</b> (이미 회원 예약·등록된 칸은 제외)</p>
+    <div class="btns"><button class="btn primary" data-act="ext-save-paste">이 내용으로 저장</button></div></div>`;
+}
+async function extInsert(rows){
+  if(!rows.length){toast('새로 넣을 칸이 없어요 (이미 등록됐어요)');return false}
+  await API.rest('POST','/blocks',rows,'return=minimal');
+  await refresh(true);return true;
+}
+
 /* --- 공지 --- */
 function noticeText(date){
-  const rs=S.reservations.filter(r=>r.date===date&&r.status==='booked').sort((a,b)=>a.start-b.start||a.court-b.court);
+  const C=S.settings.courts,occ={};
+  const add=(c,st,h)=>{(occ[c]=occ[c]||new Set());for(let i=0;i<h;i++)occ[c].add(st+i)};
   const bs=S.blocks.filter(b=>b.date===date&&b.type!=='rain');
+  bs.forEach(b=>add(b.court,b.start,b.hours));
+  const rs=S.reservations.filter(r=>r.date===date&&r.status==='booked').sort((a,b)=>a.start-b.start||a.court-b.court);
+  rs.forEach(r=>add(r.court,r.start,r.hours));
+  const sr=S.settings.seniorCourt;if(sr&&!(occ[sr]&&occ[sr].size))add(sr,6,16);
   const rain=S.reservations.filter(r=>r.date===date&&r.status==='rain_cancel');
-  let t=`🎾 ${fmtDate(date)} 코트 예약 현황\n`;
-  if(rs.length){t+=`\n`;for(const r of rs)t+=`• ${hh(r.start,r.hours)}시 코트${r.court} ${r.member}\n`}
-  else t+=`\n예약이 아직 없어요.\n`;
-  const g={};bs.forEach(b=>{const k=`${b.label}|${b.start}|${b.hours}`;(g[k]=g[k]||[]).push(b.court)});
-  const bl=Object.entries(g).map(([k,cs])=>{const [l,s,h]=k.split('|');return `• ${l} ${hh(+s,+h)}시 코트${cs.sort().join('·')}`});
-  if(bl.length)t+=`\n[공동·행사]\n${bl.join('\n')}\n`;
-  if(rain.length)t+=`\n☔ 우천 취소: ${rain.map(r=>`${r.member}(코트${r.court} ${hh(r.start,r.hours)})`).join(', ')}\n`;
+  const d=parse(date);
+  let t=`[ ${d.getMonth()+1}월 ${d.getDate()}일(${WD[d.getDay()]}) 예약 현황 ]\n`;
+  [...new Set(bs.filter(x=>x.type!=='club').map(x=>x.label+(x.type==='joint'&&!/공동/.test(x.label)?'(공동사용)':'')))].forEach(e=>{t+=`•  ${e}\n`});
+  let any=false;
+  for(let c=1;c<=C;c++){
+    const set=occ[c];if(!set||!set.size)continue;any=true;
+    const hs=[...set].sort((a,b)=>a-b);
+    if(hs.length>=16&&hs[0]<=6&&hs[hs.length-1]>=21){t+=`${c}번 : 전시간\n`;continue}
+    const rg=[];let st=hs[0],pv=hs[0];
+    for(const h of hs.slice(1)){if(h===pv+1){pv=h;continue}rg.push([st,pv+1]);st=h;pv=h}
+    rg.push([st,pv+1]);
+    t+=`${c}번 : ${rg.map(([a,b])=>`${pad(a)}-${pad(b)}시`).join(',')}\n`;
+  }
+  if(!any)t+=`예약이 아직 없어요.\n`;
+  if(rs.length){t+=`\n[헤이리 클럽 예약]\n`;for(const r of rs)t+=`• ${hh(r.start,r.hours)}시 ${r.court}번 ${r.member}\n`}
+  if(rain.length)t+=`\n☔ 우천 취소: ${rain.map(r=>`${r.member}(${r.court}번 ${hh(r.start,r.hours)})`).join(', ')}\n`;
   return t.trim();
 }
 function viewNotice(){
@@ -806,6 +911,22 @@ document.addEventListener('click',async e=>{
     case 'back-month':view.month=view.day.slice(0,7);view.day=null;render();break;
     case 'day':view.day=addDays(view.day,+D.d);render();break;
     case 'toggle-hours':view.allHours=!view.allHours;render();break;
+    case 'ext-open':if(S.admin)openExt(D.date);break;
+    case 'ext-parse':extPreview();break;
+    case 'ext-allday':{$('#ex_s').value='6';$('#ex_e').value='22';break}
+    case 'ext-save':guard(el,async()=>{
+      const date=$('#ex_date').value,type=$('#ex_type').value,label=$('#ex_label').value.trim()||BT_NAME[type];
+      const cs=[...document.querySelectorAll('#ex_courts input:checked')].map(i=>+i.value),st=+$('#ex_s').value,en=+$('#ex_e').value;
+      if(!date||!cs.length||en<=st){toast('날짜·코트·시간을 확인해 주세요');return}
+      const rows=newBlockRows(date,cs.map(c=>({court:c,ranges:[[st,en]]})),type,label);
+      if(await extInsert(rows)){closeDlg();toast(`${rows.length}건 저장했어요`)}
+    });break;
+    case 'ext-save-paste':guard(el,async()=>{
+      const p=extDraft.parsed,type=$('#ex_ptype').value,label=$('#ex_plabel').value.trim()||BT_NAME[type];
+      const rows=newBlockRows(extDraft.pdate,p.courts,type,label);
+      if(await extInsert(rows)){closeDlg();toast(`${rows.length}건 저장했어요`)}
+    });break;
+    case 'ext-del':if(confirm('이 예약 표시를 지울까요?'))guard(el,async()=>{for(const id of D.ids.split(','))await API.rest('DELETE','/blocks?id=eq.'+id,undefined,'return=minimal');await refresh(true);toast('삭제했어요')});break;
     case 'goto-notice':view.noticeDate=D.date;view.tab='notice';render();break;
     case 'cell':openRes({date:D.date,court:+D.court,start:+D.hour,hours:1});break;
     case 'add-res':openRes({date:D.date});break;
