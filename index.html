@@ -256,7 +256,7 @@ const nameOf=id=>S.byId[id]||'?';
 
 let lastEnsure=0;
 async function loadAll(){
-  if(Date.now()-lastEnsure>3600000){lastEnsure=Date.now();try{await API.rpc('ensure_assignments',{p_days:70})}catch(e){}}
+  if(Date.now()-lastEnsure>3600000){lastEnsure=Date.now();try{await API.rpc('ensure_assignments',{p_days:70})}catch(e){}}pushSync();
   const [members,res,blocks,asg,swaps,notes,sett,meId,isAdmin,rules]=await Promise.all([
     API.rest('GET','/members?select=id,name,sort,is_admin&order=sort,id'),
     API.all('reservations','select=*&order=date,start_hour,id'),
@@ -819,6 +819,22 @@ function openDlg(html){dlg.innerHTML=html;const h=dlg.querySelector('h2');if(h){
 function closeDlg(){if(dlg.open)dlg.close()}
 dlg.addEventListener('click',e=>{if(e.target===dlg)closeDlg()});
 dlg.addEventListener('close',()=>{if(S.mode==='app')render()});
+function b64u8(b){const p='='.repeat((4-b.length%4)%4),r=atob((b+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))}
+function buf64(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+async function pushSave(sub){const j=sub.toJSON();await API.rpc('save_push_sub',{p_endpoint:sub.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth})}
+async function pushEnable(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))return '⚠️ 이 브라우저에서는 푸시를 쓸 수 없어요. 아이폰은 사파리 공유 버튼 → "홈 화면에 추가"로 설치한 뒤 설치된 앱에서 눌러 주세요';
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted')return '⚠️ 알림이 허용되지 않았어요. 폰/브라우저 설정에서 이 사이트(앱)의 알림을 허용한 뒤 다시 눌러 주세요';
+  const reg=await navigator.serviceWorker.ready;
+  let sub=await reg.pushManager.getSubscription();
+  if(!sub){const key=await API.rpc('get_push_public_key');if(!key)return '⚠️ 서버 푸시 설정이 아직 준비되지 않았어요';sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u8(key)})}
+  await pushSave(sub);
+  return '✅ 푸시 알림이 켜졌어요. 이제 앱을 닫아도 알림이 와요. "푸시 테스트"로 확인해 보세요';
+}
+async function pushDisable(){if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.getRegistration();const sub=reg&&await reg.pushManager.getSubscription();if(sub){await API.rpc('delete_push_sub',{p_endpoint:sub.endpoint});await sub.unsubscribe()}}
+let pushSynced=false;
+async function pushSync(){if(pushSynced)return;pushSynced=true;try{if(!('PushManager' in window)||Notification.permission!=='granted')return;const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub)await pushSave(sub)}catch(e){}}
 function dlgMsg(t){const el=$('#alertMsg');if(el)el.textContent=t;else toast(t)}
 function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove('show'),3200)}
 async function guard(btn,fn){
@@ -1017,9 +1033,11 @@ document.addEventListener('click',async e=>{
     /* 설정·회원 관리 */
     case 'settings':openSettings();break;
     case 'save-settings':guard(el,saveSettings);break;
+    case 'push-on':guard(el,async()=>{dlgMsg(await pushEnable())});break;
+    case 'push-test':guard(el,async()=>{try{await API.rpc('push_test');dlgMsg('📨 테스트 푸시를 보냈어요. 몇 초 안에 알림이 오는지 확인하세요 (안 오면 "푸시 알림 켜기"를 먼저 눌러 주세요)')}catch(e){dlgMsg('⚠️ '+errMsg(e))}});break;
     case 'notif-perm':{let m;try{const r=await Notification.requestPermission();m=r==='granted'?'✅ 알림을 허용했어요':'⚠️ 알림이 허용되지 않았어요. 브라우저(또는 폰) 설정에서 이 사이트의 알림을 허용해 주세요'}catch(e){m='⚠️ 이 브라우저는 알림을 지원하지 않아요 (아이폰은 홈 화면에 추가한 뒤 사용해 주세요)'}dlgMsg(m);break}
     case 'test-alert':{let m='✅ 앱 안 알림 테스트: ⏰ 오늘 07:00 예약 차례예요!';try{if('Notification' in window&&Notification.permission==='granted'){new Notification('헤이리 테니스 코트',{body:'테스트 알림이에요'});m+=' (시스템 알림도 보냈어요)'}else m+=' — 시스템 알림은 아직 허용되지 않았어요(위 "브라우저 알림 허용"을 먼저 누르세요)'}catch(e){m+=' — 이 기기에서는 시스템 알림을 쓸 수 없어요'}dlgMsg(m);break}
-    case 'logout':guard(el,async()=>{try{await API.rpc('logout')}catch(e){}closeDlg();API.clear();S.mode='boot';boot()});break;
+    case 'logout':guard(el,async()=>{try{await pushDisable()}catch(e){}try{await API.rpc('logout')}catch(e){}closeDlg();API.clear();S.mode='boot';boot()});break;
     case 'members':openMembers();break;
     case 'approve':guard(el,async()=>{const r=await API.rpc('admin_approve_join',{p_request_id:D.id});toast(r==='ok'?'승인했어요':r==='name_exists'?'이미 있는 이름이에요':'처리할 수 없어요');await refresh(true);openMembers()});break;
     case 'reject':if(confirm('이 가입 신청을 거절할까요?'))guard(el,async()=>{await API.rpc('admin_reject_join',{p_request_id:D.id});await refresh(true);openMembers()});break;
@@ -1063,10 +1081,10 @@ function openSettings(){
   <p class="muted small">요금은 협회 안내 기준이에요(새벽·주간·야간은 일출·일몰에 따라 바뀔 수 있어요).</p>
   <div class="btns">${S.admin?'<button class="btn primary grow" data-act="save-settings">저장</button>':''}<button class="btn ${S.admin?'':'grow'}" data-act="close">닫기</button></div>
   <h2 class="sec">내 계정</h2>
-  <div class="btns"><button class="btn sm" data-act="notif-perm">브라우저 알림 허용</button><button class="btn sm" data-act="test-alert">알림 테스트</button>
+  <div class="btns"><button class="btn sm primary" data-act="push-on">📲 푸시 알림 켜기</button><button class="btn sm" data-act="push-test">푸시 테스트</button><button class="btn sm" data-act="test-alert">앱 안 알림 테스트</button>
   ${S.admin?'<button class="btn sm" data-act="members">👥 회원·가입 관리</button>':''}<button class="btn sm danger" data-act="logout">로그아웃</button></div>
   <p id="alertMsg" role="status" aria-live="polite" style="font-weight:700;margin:8px 0"></p>
-  <p class="muted small">알림은 앱(브라우저)이 열려 있을 때 떠요. 홈 화면에 추가하면 앱처럼 쓸 수 있어요.</p>`);
+  <p class="muted small">"푸시 알림 켜기"를 누르면 앱을 닫아 둬도 예약 10분 전(06:50)과 새 알림이 폰으로 와요. 아이폰은 먼저 사파리 공유 버튼 → "홈 화면에 추가"로 설치한 뒤 설치된 앱에서 켜 주세요.</p>`);
 }
 async function saveSettings(){
   const n=id=>+$(id).value,s=JSON.parse(JSON.stringify(S.settings));
