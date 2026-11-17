@@ -304,7 +304,7 @@ async function loadAll(){
   S.memberObjs=members;S.members=members.map(m=>m.name);S.idOf={};S.byId={};
   members.forEach(m=>{S.idOf[m.name]=m.id;S.byId[m.id]=m.name});
   S.meId=meId;S.me=nameOf(meId);S.admin=!!isAdmin;
-  S.reservations=res.map(r=>({id:r.id,date:r.date,court:r.court,start:r.start_hour,hours:r.hours,member:nameOf(r.member_id),memberId:r.member_id,status:r.status,cancelledOn:r.cancelled_on||undefined}));
+  S.reservations=res.map(r=>({id:r.id,date:r.date,court:r.court,start:r.start_hour,hours:r.hours,member:nameOf(r.member_id),memberId:r.member_id,status:r.status,cancelledOn:r.cancelled_on||undefined,recordedId:r.recorded_by||null}));
   S.blocks=blocks.map(b=>({id:b.id,date:b.date,court:b.court,start:b.start_hour,hours:b.hours,type:b.type,label:b.label}));
   S.assignments=asg.filter(a=>!a.skipped).map(a=>({id:a.id,date:a.date,member:nameOf(a.member_id),memberId:a.member_id,court:a.court||null,ruleId:a.rule_id||null,start:a.start_hour,hours:a.hours}));
   S.rules=(rules||[]).map(r=>({id:r.id,weekday:r.weekday,member:nameOf(r.member_id),memberId:r.member_id,court:r.court||null,start:r.start_hour,hours:r.hours}));
@@ -344,7 +344,7 @@ function selfCancelCount(member,year,exceptId){
   return S.reservations.filter(r=>r.member===member&&r.status==='self_cancel'&&r.date.startsWith(year)&&r.id!==exceptId).length;
 }
 function validateRes(d){
-  const err=[],warn=[];
+  const err=[],warn=[];let dup=false;
   if(!d.member)err.push('회원을 선택하세요');
   if(!d.date)err.push('날짜를 입력하세요');
   if(d.start+d.hours>22)err.push('이용 시간은 22시까지예요');
@@ -355,8 +355,8 @@ function validateRes(d){
       if(d.start<r.start+r.hours&&r.start<d.start+d.hours)err.push(`코트${d.court} ${hh(r.start,r.hours)}시에 이미 ${r.member}님 예약이 있어요`);
     for(const b of S.blocks.filter(b=>b.date===d.date&&b.court===d.court&&b.type!=='rain'))
       if(d.start<b.start+b.hours&&b.start<d.start+d.hours)err.push(`코트${d.court} ${hh(b.start,b.hours)}시는 ${b.label}(으)로 사용 중이에요`);
-    if(S.reservations.some(r=>act(r)&&r.date===d.date&&r.member===d.member))
-      err.push(`${d.member}님은 이 날 이미 예약이 있어요 (1인 1일 1회, 위반 시 자동 취소)`);
+    if(S.reservations.some(r=>act(r)&&r.date===d.date&&r.member===d.member)){dup=true;
+      warn.push(`${d.member}님은 이 날 이미 예약이 있어요. 한 사람이 같은 날 두 코트를 잡은 게 맞는지 확인하세요 (협회 사이트는 1인 1일 1회가 원칙이에요)`)}
     if(d.date>addDays(today(),S.settings.bookLead||6))warn.push(`협회 사이트는 오늘 기준 ${S.settings.bookLead||6}일 뒤까지만 예약할 수 있어요 (설정에서 바꿀 수 있어요)`);
     if(d.court===S.settings.seniorCourt)warn.push(`코트${d.court}은 시니어 고정 코트예요`);
   }
@@ -365,7 +365,7 @@ function validateRes(d){
     if(c>=6)warn.push(`올해 본인 취소가 이미 ${c}회예요 (천재지변 외 연 6회까지 허용)`);
     else if(c>=4)warn.push(`올해 본인 취소 ${c}회째예요 (연 6회까지)`);
   }
-  return {err,warn};
+  return {err,warn,dup};
 }
 function firstFreeCourt(date,start,hours){
   const m=dayMap(date);
@@ -511,7 +511,7 @@ function viewDay(date){
       if(!x){body+=`<td class="empty" data-act="cell" data-date="${date}" data-court="${c}" data-hour="${h}"></td>`;continue}
       if(x.t==='b'){const cl={joint:'joint',monthly:'monthly',blocked:'blocked',club:'club',rain:'rainc'}[x.b.type];body+=`<td class="${cl}">${esc(x.b.label)}</td>`;continue}
       const r=x.r;
-      if(r.status==='booked')body+=`<td class="res" data-act="edit-res" data-id="${r.id}">${esc(r.member)}</td>`;
+      if(r.status==='booked')body+=`<td class="res" data-act="edit-res" data-id="${r.id}"${r.recordedId&&r.recordedId!==r.memberId?` title="${esc(nameOf(r.recordedId))}님이 대신 잡음"`:''}>${esc(r.member)}${r.recordedId&&r.recordedId!==r.memberId?'<sup>🤝</sup>':''}</td>`;
       else body+=`<td class="rainc" data-act="edit-res" data-id="${r.id}" title="${STATUS[r.status]}">${esc(r.member)}<br><span class="small">${r.status==='rain_cancel'?'우천':'취소'}</span></td>`;
     }
     body+=`</tr>`;
@@ -722,7 +722,7 @@ function viewMine(){
   <h2 class="sec">내 예약 내역</h2><div class="list">${myRes.length?myRes.slice(0,30).map(r=>{
     const p=resPrice(r),cls={booked:'c-res',rain_cancel:'c-rain',self_cancel:'c-gray'}[r.status];
     const sub=r.status==='self_cancel'?(p===0?' (환불)':' (환불 불가)'):'';
-    return `<div class="item"><div class="grow"><span class="t">${fmtDate(r.date)} ${hh(r.start,r.hours)}시 · 코트${r.court}</span><br><span class="badge ${cls}">${STATUS[r.status]}${sub}</span> <span class="muted small">${won(p)}</span></div>
+    return `<div class="item"><div class="grow"><span class="t">${fmtDate(r.date)} ${hh(r.start,r.hours)}시 · 코트${r.court}</span><br><span class="badge ${cls}">${STATUS[r.status]}${sub}</span> <span class="muted small">${won(p)}${proxyTxt(r)}</span></div>
     <button class="btn sm" data-act="edit-res" data-id="${r.id}">수정</button></div>`}).join(''):'<div class="empty-note">예약 내역이 없어요</div>'}</div>
   <div class="btns"><button class="btn primary" data-act="add-res" data-date="${today()}">＋ 예약 결과 입력</button></div>
   <h2 class="sec">알림</h2><div class="list">${inbox.length?inbox.map(n=>`<div class="item" style="${n.read?'opacity:.65':''}"><div class="grow">${esc(n.text)}<br><span class="muted small">${new Date(n.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}${n.toAdmin?' · 예약관리자 알림':''}</span></div></div>`).join(''):'<div class="empty-note">받은 알림이 없어요</div>'}</div>
@@ -912,12 +912,12 @@ const noteTo=(memberId,text)=>API.rest('POST','/notes',{to_member:memberId,text}
 const noteAdmin=text=>API.rest('POST','/notes',{to_admin:true,text},'return=minimal');
 
 let draft=null;
+function proxyTxt(r){return r.recordedId&&r.recordedId!==r.memberId?` · ${esc(nameOf(r.recordedId))}님이 대신 잡음`:''}
 function openRes(d){
   draft={status:'booked',court:2,start:18,hours:2,cancelledOn:today(),member:S.me,...d};
-  if(!S.admin)draft.member=S.me;
   const C=S.settings.courts;
   openDlg(`<h2>${draft.id?'예약 수정':'예약 결과 입력'}</h2><div class="form">
-    <label>회원</label><select data-f="member" ${S.admin?'':'disabled'}>${S.members.map(m=>`<option ${m===draft.member?'selected':''}>${esc(m)}</option>`).join('')}</select>
+    <label>예약한 회원 <span class="muted small">(협회 사이트에 예약한 사람)</span></label><select data-f="member">${S.members.map(m=>`<option ${m===draft.member?'selected':''}>${esc(m)}</option>`).join('')}</select>
     <label>이용일</label><input type="date" data-f="date" value="${draft.date||today()}">
     <label>코트</label><select data-f="court">${Array.from({length:C},(_,i)=>`<option value="${i+1}" ${draft.court===i+1?'selected':''}>코트${i+1}</option>`).join('')}</select>
     <label>시작 시각</label><select data-f="start">${Array.from({length:16},(_,i)=>i+6).map(h=>`<option value="${h}" ${draft.start===h?'selected':''}>${pad(h)}시</option>`).join('')}</select>
@@ -940,6 +940,7 @@ function updPreview(){
   let h='';
   v.err.forEach(m=>h+=`<div class="msg err">⛔ ${esc(m)}</div>`);
   v.warn.forEach(m=>h+=`<div class="msg warn">⚠️ ${esc(m)}</div>`);
+  if(draft.member&&draft.member!==S.me&&draft.status==='booked')h+=`<div class="msg ok">🤝 ${esc(draft.member)}님 이름으로 대신 기록해요. ${esc(draft.member)}님께 알림이 가요</div>`;
   if(draft.status==='self_cancel')h+=`<div class="msg ${p?'warn':'ok'}">${p?'이용 3일 이내 본인 취소라 환불이 안 돼요':'이용 3일 전까지 취소라 환불돼요'}</div>`;
   h+=`<div class="msg ok">정산 금액 <b>${won(p)}</b> (${draft.hours}시간${draft.status==='rain_cancel'?' · 우천 전액 환불':''})</div>`;
   $('#resPreview').innerHTML=h;
@@ -1014,13 +1015,16 @@ document.addEventListener('click',async e=>{
     case 'goto-notice':view.noticeDate=D.date;view.tab='notice';render();break;
     case 'cell':openRes({date:D.date,court:+D.court,start:+D.hour,hours:1});break;
     case 'add-res':openRes({date:D.date});break;
-    case 'edit-res':{const r=S.reservations.find(r=>r.id===D.id);if(r){if(!S.admin&&r.memberId!==S.meId){toast('내 예약만 고칠 수 있어요 (예약관리자는 전체)');break}openRes({...r})}break}
+    case 'edit-res':{const r=S.reservations.find(r=>r.id===D.id);if(r){if(!S.admin&&r.memberId!==S.meId&&r.recordedId!==S.meId){toast('내 예약만 고칠 수 있어요 (예약관리자는 전체)');break}openRes({...r})}break}
     case 'save-res':guard(el,async()=>{
       readDraft();const v=validateRes(draft);if(v.err.length)return;
+      if(v.dup&&!confirm(`${draft.member}님은 ${fmtDate(draft.date)}에 이미 예약이 있어요.\n한 사람이 두 코트를 잡은 게 맞으면 저장하세요. 계속할까요?`))return;
       const row={date:draft.date,court:draft.court,start_hour:draft.start,hours:draft.hours,member_id:S.idOf[draft.member],status:draft.status,cancelled_on:draft.status==='self_cancel'?draft.cancelledOn:null};
       if(draft.id)await API.rest('PATCH','/reservations?id=eq.'+draft.id,row,'return=minimal');
-      else await API.rest('POST','/reservations',row,'return=minimal');
-      if(draft.status==='booked'&&row.member_id!==S.meId)await noteTo(row.member_id,`${fmtDate(draft.date)} ${hh(draft.start,draft.hours)}시 코트${draft.court} 예약이 기록됐어요`).catch(()=>{});
+      else await API.rest('POST','/reservations',{...row,recorded_by:S.meId},'return=minimal');
+      const proxy=!draft.id&&draft.status==='booked'&&row.member_id!==S.meId;
+      if(draft.status==='booked'&&row.member_id!==S.meId)await noteTo(row.member_id,`${proxy?S.me+'님이 대신 잡아 ':''}${fmtDate(draft.date)} ${hh(draft.start,draft.hours)}시 코트${draft.court} 예약이 ${proxy?'기록됐어요. 본인 이름으로 정산돼요':'기록됐어요'}`).catch(()=>{});
+      if(proxy&&!S.admin)await noteAdmin(`🤝 ${S.me}님이 ${draft.member}님 이름으로 ${fmtDate(draft.date)} ${hh(draft.start,draft.hours)}시 코트${draft.court} 예약을 대신 기록했어요`).catch(()=>{});
       if(draft.alt&&draft.status==='booked')await noteAdmin(`🔄 ${draft.member}님: 배정(${draft.alt})은 못 잡고, ${fmtDate(draft.date)} ${hh(draft.start,draft.hours)}시 코트${draft.court}를 예약했어요`).catch(()=>{});
       await refresh(true);closeDlg();toast('저장했어요');
     });break;
