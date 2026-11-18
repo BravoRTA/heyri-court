@@ -332,7 +332,8 @@ async function refresh(force){
 /* ============ 요금 / 규칙 ============ */
 const isOff=d=>{const w=parse(d).getDay();return w===0||w===6||S.settings.holidays.includes(d)};
 const hourRate=(d,h)=>{const t=isOff(d)?S.settings.rates.we:S.settings.rates.wd;return h>=S.settings.nightStart?t.night:t.day};
-const fullPrice=r=>{let p=0;for(let i=0;i<r.hours;i++)p+=hourRate(r.date,r.start+i);return p};
+const inJoint=(r,h)=>S.blocks.some(b=>b.type==='joint'&&b.date===r.date&&b.court===r.court&&h>=b.start&&h<b.start+b.hours);
+const fullPrice=r=>{let p=0;for(let i=0;i<r.hours;i++)if(!inJoint(r,r.start+i))p+=hourRate(r.date,r.start+i);return p};
 const daysBetween=(a,b)=>Math.round((parse(a)-parse(b))/864e5);
 function resPrice(r){
   if(r.status==='booked')return fullPrice(r);
@@ -943,6 +944,7 @@ function updPreview(){
   v.err.forEach(m=>h+=`<div class="msg err">⛔ ${esc(m)}</div>`);
   v.warn.forEach(m=>h+=`<div class="msg warn">⚠️ ${esc(m)}</div>`);
   if(draft.member&&draft.member!==S.me&&draft.status==='booked')h+=`<div class="msg ok">🤝 ${esc(draft.member)}님 이름으로 대신 기록해요. ${esc(draft.member)}님께 알림이 가요</div>`;
+  if(draft.date&&Array.from({length:draft.hours},(_,i)=>draft.start+i).some(x=>inJoint(draft,x)))h+=`<div class="msg ok">공동 사용 시간은 요금이 빠져요 (클럽끼리 따로 정산해요)</div>`;
   if(draft.status==='self_cancel')h+=`<div class="msg ${p?'warn':'ok'}">${p?'이용 3일 이내 본인 취소라 환불이 안 돼요':'이용 3일 전까지 취소라 환불돼요'}</div>`;
   h+=`<div class="msg ok">정산 금액 <b>${won(p)}</b> (${draft.hours}시간${draft.status==='rain_cancel'?' · 우천 전액 환불':''})</div>`;
   $('#resPreview').innerHTML=h;
