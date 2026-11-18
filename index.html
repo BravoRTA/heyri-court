@@ -354,7 +354,9 @@ function validateRes(d){
     for(const r of S.reservations.filter(r=>act(r)&&r.date===d.date&&r.court===d.court))
       if(d.start<r.start+r.hours&&r.start<d.start+d.hours)err.push(`코트${d.court} ${hh(r.start,r.hours)}시에 이미 ${r.member}님 예약이 있어요`);
     for(const b of S.blocks.filter(b=>b.date===d.date&&b.court===d.court&&b.type!=='rain'))
-      if(d.start<b.start+b.hours&&b.start<d.start+d.hours)err.push(`코트${d.court} ${hh(b.start,b.hours)}시는 ${b.label}(으)로 사용 중이에요`);
+      if(d.start<b.start+b.hours&&b.start<d.start+d.hours){
+        if(b.type==='joint')warn.push(`코트${d.court} ${hh(b.start,b.hours)}시는 공동 사용 시간이에요 (여러 클럽이 함께 써요)`);
+        else err.push(`코트${d.court} ${hh(b.start,b.hours)}시는 ${b.label}(으)로 사용 중이에요`)}
     if(S.reservations.some(r=>act(r)&&r.date===d.date&&r.member===d.member)){dup=true;
       warn.push(`${d.member}님은 이 날 이미 예약이 있어요. 한 사람이 같은 날 두 코트를 잡은 게 맞는지 확인하세요 (협회 사이트는 1인 1일 1회가 원칙이에요)`)}
     if(d.date>addDays(today(),S.settings.bookLead||6))warn.push(`협회 사이트는 오늘 기준 ${S.settings.bookLead||6}일 뒤까지만 예약할 수 있어요 (설정에서 바꿀 수 있어요)`);
