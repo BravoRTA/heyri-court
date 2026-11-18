@@ -1,5 +1,5 @@
 // 앱 화면 파일만 캐시해요. 서버(Supabase) 요청은 건드리지 않아요.
-const C='hairi-court-v13';
+const C='hairi-court-v14';
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['./','./index.html','./config.js','./manifest.webmanifest','./icon.svg'])));self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{
